@@ -1,0 +1,42 @@
+{
+  "name": "rn-ble-connect",
+  "version": "0.1.0",
+  "description": "This module let users connect with BLE devices and create own devices as BLE peripheral.",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "scripts": {
+    "build": "expo-module build",
+    "clean": "expo-module clean",
+    "lint": "expo-module lint",
+    "test": "expo-module test",
+    "prepare": "expo-module prepare",
+    "prepublishOnly": "expo-module prepublishOnly",
+    "expo-module": "expo-module",
+    "open:ios": "xed example/ios",
+    "open:android": "open -a \"Android Studio\" example/android"
+  },
+  "keywords": [
+    "react-native",
+    "expo",
+    "rn-ble-connect",
+    "RnBleConnect"
+  ],
+  "repository": "https://github.com/dawn0011/rn-ble-connect",
+  "bugs": {
+    "url": "https://github.com/dawn0011/rn-ble-connect/issues"
+  },
+  "author": "DA <daniyalawan0011@gmail.com> (https://github.com/dawn0011)",
+  "license": "MIT",
+  "homepage": "https://github.com/dawn0011/rn-ble-connect#readme",
+  "dependencies": {},
+  "devDependencies": {
+    "@types/react": "^18.0.25",
+    "expo-module-scripts": "^3.5.2",
+    "expo-modules-core": "^1.12.19"
+  },
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}

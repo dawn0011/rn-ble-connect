@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "rn-ble-connect": ["../src/index"],
+      "rn-ble-connect/*": ["../src/*"]
+    }
+  }
+}

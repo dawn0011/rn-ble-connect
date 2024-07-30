@@ -25,12 +25,12 @@ public class RnBleConnectModule: Module {
       return ble.getName()
     }
 
-    Function("addService") { (uuid: String, primary: Bool) -> void in
-      return ble.addService(uuid, primary)
+    Function("addService") { (uuid: String, primary: Bool) -> Void in
+      return ble.addService(uuid, primary:primary)
     }
 
-    Function("addCharacteristicToService") { (serviceUUID: String, uuid: String, permissions: UInt, properties: UInt, data: String) -> void in
-      return ble.addCharacteristicToService(serviceUUID, uuid, permissions, properties, data)
+    Function("addCharacteristicToService") { (serviceUUID: String, uuid: String, permissions: UInt, properties: UInt, data: String) -> Void in
+      return ble.addCharacteristicToService(serviceUUID, uuid:uuid, permissions:permissions, properties:properties, data:data)
     }
 
     Function("start") {
@@ -41,8 +41,8 @@ public class RnBleConnectModule: Module {
       return ble.stop()
     }
 
-    Function("sendNotificationToDevices") { (serviceUUID: String, characteristicUUID: String, data: Data) -> void in
-      return ble.sendNotificationToDevices(serviceUUID, characteristicUUID, data)
+    Function("sendNotificationToDevices") { (serviceUUID: String, characteristicUUID: String, data: Data) -> Void in
+      return ble.sendNotificationToDevices(serviceUUID, characteristicUUID:characteristicUUID, data:data)
     }
   }
 }

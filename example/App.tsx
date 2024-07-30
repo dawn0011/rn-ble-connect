@@ -4,7 +4,7 @@ import * as RnBleConnect from "rn-ble-connect";
 export default function App() {
   return (
     <View style={styles.container}>
-      <Text>{RnBleConnect.hello()}</Text>
+      <Text>{RnBleConnect.getName()}</Text>
     </View>
   );
 }

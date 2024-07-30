@@ -9,11 +9,9 @@ const {
   setName,
   getName,
   isAdvertising,
-  hello,
 } = RnBleConnectModule;
 
 export {
-  hello,
   addService,
   addCharacteristicToService,
   sendNotificationToDevices,

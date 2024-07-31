@@ -19,7 +19,9 @@ class RnBleConnectModule : Module() {
   private var name: String = "RN_BLE"
   private val TAG = "RnBleConnectModule"
   private val servicesMap = mutableMapOf<String, BluetoothGattService>()
-  private lateinit var context: Context
+//  private lateinit var context: Context
+  private val context
+  get() = requireNotNull(appContext.reactContext)
   private lateinit var mBluetoothManager: BluetoothManager
   private lateinit var mBluetoothAdapter: BluetoothAdapter
   private lateinit var mGattServer: BluetoothGattServer
@@ -99,11 +101,6 @@ class RnBleConnectModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("RnBleConnect")
 
-    Function("hello") {
-      Log.d(TAG, "Hello World Func Called")
-      "Hello world! 👋"
-    }
-
     Function("setName") { newName: String ->
       name = newName
       Log.d(TAG, "Name set to $name")
@@ -126,17 +123,28 @@ class RnBleConnectModule : Module() {
       }
     }
 
-    Function("addCharacteristicToService") { serviceUUID: String, charUUID: String, permissions: Int, properties: Int ->
+    Function("addCharacteristicToService") { serviceUUID: String, charUUID: String, permissions: Int, properties: Int, characteristicData: String? ->
       val service = servicesMap[serviceUUID]
       if (service != null) {
         val characteristicUUID = UUID.fromString(charUUID)
-        val characteristic = BluetoothGattCharacteristic(characteristicUUID, properties, permissions)
-        service.addCharacteristic(characteristic)
-        Log.d(TAG, "Characteristic added to service with UUID: $serviceUUID")
+        val existingCharacteristic = service.getCharacteristic(characteristicUUID)
+        if (existingCharacteristic != null) {
+          if (!characteristicData.isNullOrEmpty()) {
+            existingCharacteristic.value = characteristicData.toByteArray()
+          }
+        } else {
+          val tempChar = BluetoothGattCharacteristic(characteristicUUID, properties, permissions)
+          if (!characteristicData.isNullOrEmpty()) {
+            tempChar.value = characteristicData.toByteArray()
+          }
+          service.addCharacteristic(tempChar)
+        }
+        Log.d(TAG, "Characteristic added or updated in service with UUID: $serviceUUID")
       } else {
         Log.d(TAG, "Service with UUID: $serviceUUID not found")
       }
     }
+
 
     AsyncFunction("start") { promise: Promise ->
       mBluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager

@@ -18,7 +18,7 @@ interface RnBleConnectInterface {
   stop(): void;
   setName(name: string): void;
   getName(): string;
-  isAdvertising(): Promise<boolean>;
+  isAdvertising(): boolean;
 }
 
 let RnBleConnectModule: RnBleConnectInterface;

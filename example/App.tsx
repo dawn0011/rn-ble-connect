@@ -5,7 +5,7 @@ import * as RnBleConnect from "rn-ble-connect";
 
 const BLE_DATA_TRANSMIT_SERVICE = 'bea99000-0000-0000-0000-000000000000';
 const CHARACTERISTIC_1 = 'bea99000-0000-0000-0000-000000000000';
-const CHARACTERISTIC_2 = 'bea990001-0000-0000-0000-000000000000';
+const CHARACTERISTIC_2 = 'bea99001-0000-0000-0000-000000000000';
 
 export default function App() {
   const [status, setStatus] = useState('App Start')

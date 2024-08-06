@@ -4,14 +4,8 @@ import CoreBluetooth
 public class RnBleConnectModule: Module {
   public func definition() -> ModuleDefinition {
     Name("RnBleConnect")
-    
-    var ble = BLEPeripheral();
 
-    // Events("onWarning")
-
-    // func sendBLEEvent(eventName: String, body: Any) {
-    //   sendEvent(eventName, body)
-    // }
+    let ble = BLEPeripheral();
     
     Function("isAdvertising") {
       return ble.isAdvertising()
@@ -33,8 +27,8 @@ public class RnBleConnectModule: Module {
       return ble.addCharacteristicToService(serviceUUID, uuid:uuid, permissions:permissions, properties:properties, data:data)
     }
 
-    Function("start") {
-      return ble.start()
+    AsyncFunction("start") { (promise: Promise) in
+        ble.start(promise.resolver, rejecter: promise.legacyRejecter)
     }
 
     Function("stop") {

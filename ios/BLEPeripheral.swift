@@ -1,26 +1,31 @@
 import Foundation
 import CoreBluetooth
+import ExpoModulesCore
 
 class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
     var advertising: Bool = false
     var hasListeners: Bool = false
-    var name: String = "RN_BLE"
+    var name: String?
     var servicesMap = Dictionary<String, CBMutableService>()
     var manager: CBPeripheralManager!
+    var startPromiseResolve: EXPromiseResolveBlock?
+    var startPromiseReject: EXPromiseRejectBlock?
     
     override init() {
         super.init()
         manager = CBPeripheralManager(delegate: self, queue: nil, options: nil)
+        advertising = false
+        name = "RN_BLE"
         print("BLEPeripheral initialized, advertising: \(advertising)")
     }
 
     func setName(_ name: String) {
         self.name = name
-        print("name set to \(name)")
+        print("peripheral name set to \(name)")
     }
 
     func getName() -> String{
-        return self.name
+        return self.name ?? "RN_BLE"
     }
     
     func isAdvertising() -> Bool {
@@ -32,10 +37,8 @@ class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
         let service = CBMutableService(type: serviceUUID, primary: primary)
         if(servicesMap.keys.contains(uuid) != true){
             servicesMap[uuid] = service
-            manager.add(service)
             print("added service \(uuid)")
-        }
-        else {
+        } else {
             alertJS("service \(uuid) already there")
         }
     }
@@ -46,27 +49,51 @@ class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
         let permissionValue = CBAttributePermissions(rawValue: permissions)
         let byteData: Data = data.data(using: .utf8)!
         let characteristic = CBMutableCharacteristic( type: characteristicUUID, properties: propertyValue, value: byteData, permissions: permissionValue)
-        servicesMap[serviceUUID]?.characteristics?.append(characteristic)
+        
+        if(servicesMap[serviceUUID] != nil) {
+            if(servicesMap[serviceUUID]!.characteristics != nil) {
+                servicesMap[serviceUUID]!.characteristics!.append(characteristic)
+            } else {
+                servicesMap[serviceUUID]!.characteristics = [characteristic]
+            }
+        }
+        
         print("added characteristic to service")
     }
     
-   func start() {
+   func start(_ resolve: @escaping EXPromiseResolveBlock, rejecter reject: @escaping EXPromiseRejectBlock) {
        if (manager.state != .poweredOn) {
            alertJS("Bluetooth turned off")
            return;
        }
-
-       let advertisementData = [
-           CBAdvertisementDataLocalNameKey: name,
-           CBAdvertisementDataServiceUUIDsKey: getServiceUUIDArray()
-           ] as [String : Any]
+       
+       startPromiseResolve = resolve
+       startPromiseReject = reject
+       
+       let advertisementData: [String:Any]
+       
+       if(self.name != nil) {
+           advertisementData = [
+                   CBAdvertisementDataLocalNameKey: self.name as Any,
+                   CBAdvertisementDataServiceUUIDsKey: getServiceUUIDArray()
+               ]
+       } else {
+           advertisementData = [CBAdvertisementDataServiceUUIDsKey: getServiceUUIDArray()]
+       }
+       
+       for (_, service) in servicesMap {
+           manager.add(service)
+       }
+       
+       print("starting advertising")
        manager.startAdvertising(advertisementData)
    }
     
     func stop() {
+        manager.removeAllServices()
         manager.stopAdvertising()
         advertising = false
-        print("called stop")
+        print("Advertisement Stopped")
     }
 
     func sendNotificationToDevices(_ serviceUUID: String, characteristicUUID: String, data: Data) {
@@ -158,9 +185,11 @@ class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
         if let error = error {
             alertJS("advertising failed. error: \(error)")
             advertising = false
+            startPromiseReject!("AD_ERR", "advertising failed", error)
             return
         }
         advertising = true
+        startPromiseResolve!(advertising)
         print("advertising succeeded!")
     }
     
@@ -203,6 +232,7 @@ class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
         for (_, service) in servicesMap {
             serviceArray.append(service.uuid)
         }
+        print("service array %@", serviceArray)
         return serviceArray
     }
 

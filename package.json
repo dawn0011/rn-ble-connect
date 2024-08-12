@@ -1,6 +1,6 @@
 {
   "name": "rn-ble-connect",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "This module let users connect with BLE devices and create own devices as BLE peripheral.",
   "main": "build/index.js",
   "types": "build/index.d.ts",

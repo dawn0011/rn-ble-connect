@@ -9,13 +9,21 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.ParcelUuid
 import android.util.Log
+import androidx.core.os.bundleOf
 import androidx.core.app.ActivityCompat
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.util.*
+import android.util.Base64
+import java.nio.charset.Charset
+import android.os.Bundle
 
 class RnBleConnectModule : Module() {
+  val LOG_EVENT = "onLog"
+  val DATA_RECEIVED_EVENT = "onDataReceived"
+  var hasListeners = false
+
   private var name: String = "RN_BLE"
   private val TAG = "RnBleConnectModule"
   private val servicesMap = mutableMapOf<String, BluetoothGattService>()
@@ -33,19 +41,19 @@ class RnBleConnectModule : Module() {
     override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
       super.onConnectionStateChange(device, status, newState)
       if (ActivityCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-        Log.d(TAG, "Bluetooth connect permission not granted")
+        alertJS("Bluetooth connect permission not granted")
         return
       }
       if (status == BluetoothGatt.GATT_SUCCESS) {
         if (newState == BluetoothGatt.STATE_CONNECTED) {
-          Log.d(TAG, "Device connected: ${device.address}")
+          alertJS("Device connected: ${device.address}")
           mBluetoothDevices.add(device)
         } else if (newState == BluetoothGatt.STATE_DISCONNECTED) {
-          Log.d(TAG, "Device disconnected: ${device.address}")
+          alertJS("Device disconnected: ${device.address}")
           mBluetoothDevices.remove(device)
         }
       } else {
-        Log.d(TAG, "Error in connection state change: $status")
+        alertJS("Error in connection state change: $status")
         mBluetoothDevices.remove(device)
       }
     }
@@ -58,7 +66,7 @@ class RnBleConnectModule : Module() {
     ) {
       super.onCharacteristicReadRequest(device, requestId, offset, characteristic)
       if (ActivityCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-        Log.d(TAG, "Bluetooth connect permission not granted")
+        alertJS("Bluetooth connect permission not granted")
         return
       }
       if (offset != 0) {
@@ -77,12 +85,24 @@ class RnBleConnectModule : Module() {
       offset: Int,
       value: ByteArray
     ) {
+      alertJS("characteristic write request received")
       super.onCharacteristicWriteRequest(device, requestId, characteristic, preparedWrite, responseNeeded, offset, value)
       if (ActivityCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-        Log.d(TAG, "Bluetooth connect permission not granted")
+        alertJS("Bluetooth connect permission not granted")
         return
       }
       characteristic.value = value
+      val result: String = byteArrayToString(value)
+      alertJS("characteristic data received $result")
+
+      // Create the main Bundle with all parameters
+      val mainBundle = bundleOf(
+          "device" to bluetoothDeviceToBundle(device),
+          "requestId" to requestId,
+          "characteristic" to bluetoothGattCharacteristicToBundle(characteristic),
+          "value" to result
+      )
+      sendBLEEvent(DATA_RECEIVED_EVENT, mainBundle)
       if (responseNeeded) {
         mGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
       }
@@ -90,24 +110,34 @@ class RnBleConnectModule : Module() {
 
     override fun onNotificationSent(device: BluetoothDevice, status: Int) {
       super.onNotificationSent(device, status)
-      Log.d(TAG, "Notification sent to ${device.address} with status: $status")
+      alertJS("Notification sent to ${device.address} with status: $status")
     }
   }
 
   init {
-    Log.d(TAG, "Welcome to RnBleConnectModule")
+    alertJS("Welcome to RnBleConnectModule")
   }
 
   override fun definition() = ModuleDefinition {
     Name("RnBleConnect")
 
+    Events(LOG_EVENT, DATA_RECEIVED_EVENT)
+
+    OnStartObserving {
+      hasListeners = true
+    }
+
+    OnStopObserving {
+      hasListeners = false
+    }
+
     Function("setName") { newName: String ->
       name = newName
-      Log.d(TAG, "Name set to $name")
+      alertJS("Name set to $name")
     }
 
     Function("getName") {
-      Log.d(TAG, "Getting name: $name")
+      alertJS("Getting name: $name")
       name
     }
 
@@ -117,9 +147,9 @@ class RnBleConnectModule : Module() {
       val service = BluetoothGattService(serviceUUID, type)
       if (!servicesMap.containsKey(uuid)) {
         servicesMap[uuid] = service
-        Log.d(TAG, "Service added with UUID: $uuid")
+        alertJS("Service added with UUID: $uuid")
       } else {
-        Log.d(TAG, "Service with UUID: $uuid already exists")
+        alertJS("Service with UUID: $uuid already exists")
       }
     }
 
@@ -139,18 +169,17 @@ class RnBleConnectModule : Module() {
           }
           service.addCharacteristic(tempChar)
         }
-        Log.d(TAG, "Characteristic added or updated in service with UUID: $serviceUUID")
+        alertJS("Characteristic added or updated in service with UUID: $serviceUUID")
       } else {
-        Log.d(TAG, "Service with UUID: $serviceUUID not found")
+        alertJS("Service with UUID: $serviceUUID not found")
       }
     }
-
 
     AsyncFunction("start") { promise: Promise ->
       mBluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
       mBluetoothAdapter = mBluetoothManager.adapter
       if (ActivityCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-        Log.d(TAG, "Bluetooth connect permission not granted")
+        alertJS("Bluetooth connect permission not granted")
         promise.reject("Permission Error", "Bluetooth connect permission not granted", null)
         return@AsyncFunction
       }
@@ -175,17 +204,19 @@ class RnBleConnectModule : Module() {
         dataBuilder.addServiceUuid(ParcelUuid(service.uuid))
       }
       val data = dataBuilder.build()
-      Log.d(TAG, data.toString())
+      alertJS(data.toString())
 
       val advertisingCallback = object : AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
           super.onStartSuccess(settingsInEffect)
           advertising = true
+          alertJS("Started Advertising")
           promise.resolve("Success, Started Advertising")
         }
 
         override fun onStartFailure(errorCode: Int) {
           advertising = false
+          alertJS("Advertising onStartFailure: $errorCode")
           Log.e(TAG, "Advertising onStartFailure: $errorCode")
           promise.reject("Advertising Error", "Advertising onStartFailure: $errorCode", null)
           super.onStartFailure(errorCode)
@@ -204,7 +235,7 @@ class RnBleConnectModule : Module() {
             }
 
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
-              Log.d(TAG, "Advertising stopped successfully")
+              alertJS("Advertising stopped successfully")
             }
           })
         }
@@ -232,14 +263,62 @@ class RnBleConnectModule : Module() {
         for (device in mBluetoothDevices) {
           mGattServer.notifyCharacteristicChanged(device, characteristic, indicate)
         }
-        Log.d(TAG, "Notification sent to devices")
+        alertJS("Notification sent to devices")
       } else {
-        Log.d(TAG, "Characteristic not found")
+        alertJS("Characteristic not found")
       }
     }
 
     Function("isAdvertising") {
       advertising
     }
+  }
+
+  fun byteArrayToString(byteArray: ByteArray, charset: Charset = Charsets.UTF_8): String {
+    return String(byteArray, charset)
+  }
+
+  private fun alertJS(message: String) {
+      Log.d(TAG, message)
+      sendBLEEvent(LOG_EVENT, bundleOf("message" to message))
+  }
+
+  private fun sendBLEEvent(type: String, data: Bundle) {
+    Log.d(TAG, "haslisterns: $hasListeners")
+    if(hasListeners) {
+        this@RnBleConnectModule.sendEvent(type, data)
+    }
+  }
+
+  fun bluetoothDeviceToBundle(device: BluetoothDevice): Bundle {
+    val bundle = Bundle()
+
+    // Put BluetoothDevice properties into the Bundle
+    bundle.putString("name", device.name)  // Device name
+    bundle.putString("address", device.address)  // MAC address of the device
+    bundle.putInt("bondState", device.bondState)  // Bond state (e.g., bonded, bonding, or none)
+    bundle.putInt("type", device.type)  // Type of Bluetooth device (e.g., classic, LE, dual)
+
+    // If you need the UUIDs or any other information, you can add those as well
+    val uuids = device.uuids
+    if (uuids != null) {
+        val uuidArray = uuids.map { it.uuid.toString() }.toTypedArray()
+        bundle.putStringArray("uuids", uuidArray)
+    }
+
+    return bundle
+  }
+
+  fun bluetoothGattCharacteristicToBundle(characteristic: BluetoothGattCharacteristic): Bundle {
+    val bundle = Bundle()
+
+    // Put BluetoothGattCharacteristic properties into the Bundle
+    bundle.putString("uuid", characteristic.uuid.toString())  // UUID of the characteristic
+    bundle.putInt("properties", characteristic.properties)  // Properties of the characteristic (e.g., read, write)
+    bundle.putInt("permissions", characteristic.permissions)  // Permissions of the characteristic
+    val result: String = byteArrayToString(characteristic.value)
+    bundle.putString("value", result)  // Current value of the characteristic
+
+    return bundle
   }
 }

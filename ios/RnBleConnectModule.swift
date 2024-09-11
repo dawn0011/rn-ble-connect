@@ -2,10 +2,25 @@ import ExpoModulesCore
 import CoreBluetooth
 
 public class RnBleConnectModule: Module {
+  
+  var hasListeners = false
+  let LOG_EVENT = "onLog"
+  let DATA_RECEIVED_EVENT = "onDataReceived"
+    
   public func definition() -> ModuleDefinition {
     Name("RnBleConnect")
+      
+    Events(LOG_EVENT, DATA_RECEIVED_EVENT)
+      
+    OnStartObserving {
+      hasListeners = true
+    }
 
-    let ble = BLEPeripheral();
+    OnStopObserving {
+      hasListeners = false
+    }
+
+    let ble = BLEPeripheral(bleModule: self);
     
     Function("isAdvertising") {
       return ble.isAdvertising()
@@ -23,7 +38,7 @@ public class RnBleConnectModule: Module {
       return ble.addService(uuid, primary:primary)
     }
 
-    Function("addCharacteristicToService") { (serviceUUID: String, uuid: String, permissions: UInt, properties: UInt, data: String) -> Void in
+    Function("addCharacteristicToService") { (serviceUUID: String, uuid: String, permissions: UInt, properties: UInt, data: String? ) -> Void in
       return ble.addCharacteristicToService(serviceUUID, uuid:uuid, permissions:permissions, properties:properties, data:data)
     }
 
@@ -37,6 +52,16 @@ public class RnBleConnectModule: Module {
 
     Function("sendNotificationToDevices") { (serviceUUID: String, characteristicUUID: String, data: Data) -> Void in
       return ble.sendNotificationToDevices(serviceUUID, characteristicUUID:characteristicUUID, data:data)
+    }
+  }
+    
+  @objc
+  public func sendBLEEvent(type: String, data: Any) {
+    print("RNBLEMODULE haslisterns: ", hasListeners);
+    if(hasListeners) {
+        sendEvent(type, [
+            "data": data
+        ])
     }
   }
 }

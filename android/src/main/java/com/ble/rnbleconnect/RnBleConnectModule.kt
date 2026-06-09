@@ -7,6 +7,9 @@ import android.bluetooth.le.AdvertiseSettings
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
 import androidx.core.os.bundleOf
@@ -37,10 +40,46 @@ class RnBleConnectModule : Module() {
   private var advertising = false
   private val mBluetoothDevices = mutableSetOf<BluetoothDevice>()
 
+  // Native stop timer — runs on the Android main thread, unaffected by JS throttling
+  private val stopHandler = Handler(Looper.getMainLooper())
+  private var stopRunnable: Runnable? = null
+
+  /** True only on API 31+ where BLUETOOTH_CONNECT is a runtime permission. */
+  private fun requiresBluetoothConnectPermission(): Boolean =
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+  private fun hasBluetoothConnectPermission(): Boolean =
+    ActivityCompat.checkSelfPermission(
+      context,
+      android.Manifest.permission.BLUETOOTH_CONNECT
+    ) == PackageManager.PERMISSION_GRANTED
+
+  private fun stopAdvertisingInternal() {
+    try {
+      if (::advertiser.isInitialized) {
+        advertiser.stopAdvertising(object : AdvertiseCallback() {
+          override fun onStartFailure(errorCode: Int) {
+            Log.e(TAG, "Advertising stop failed: $errorCode")
+          }
+          override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
+            alertJS("Advertising stopped successfully")
+          }
+        })
+      }
+      if (::mGattServer.isInitialized) {
+        mGattServer.close()
+      }
+    } catch (e: Exception) {
+      Log.e(TAG, "stopAdvertisingInternal error: ${e.message}")
+    }
+    advertising = false
+    alertJS("Advertising stopped")
+  }
+
   private val mGattServerCallback = object : BluetoothGattServerCallback() {
     override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
       super.onConnectionStateChange(device, status, newState)
-      if (ActivityCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+      if (requiresBluetoothConnectPermission() && !hasBluetoothConnectPermission()) {
         alertJS("Bluetooth connect permission not granted")
         return
       }
@@ -65,7 +104,7 @@ class RnBleConnectModule : Module() {
       characteristic: BluetoothGattCharacteristic
     ) {
       super.onCharacteristicReadRequest(device, requestId, offset, characteristic)
-      if (ActivityCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+      if (requiresBluetoothConnectPermission() && !hasBluetoothConnectPermission()) {
         alertJS("Bluetooth connect permission not granted")
         return
       }
@@ -87,7 +126,7 @@ class RnBleConnectModule : Module() {
     ) {
       alertJS("characteristic write request received")
       super.onCharacteristicWriteRequest(device, requestId, characteristic, preparedWrite, responseNeeded, offset, value)
-      if (ActivityCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+      if (requiresBluetoothConnectPermission() && !hasBluetoothConnectPermission()) {
         alertJS("Bluetooth connect permission not granted")
         return
       }
@@ -175,10 +214,16 @@ class RnBleConnectModule : Module() {
       }
     }
 
-    AsyncFunction("start") { promise: Promise ->
+    /**
+     * start(durationMs) — starts BLE advertising.
+     * durationMs: if > 0, a native Handler timer will call stop automatically after that many
+     * milliseconds. This is unaffected by JS engine throttling when the app is backgrounded.
+     * Pass 0 to advertise indefinitely (caller is responsible for stopping).
+     */
+    AsyncFunction("start") { durationMs: Double, promise: Promise ->
       mBluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
       mBluetoothAdapter = mBluetoothManager.adapter
-      if (ActivityCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+      if (requiresBluetoothConnectPermission() && !hasBluetoothConnectPermission()) {
         alertJS("Bluetooth connect permission not granted")
         promise.reject("Permission Error", "Bluetooth connect permission not granted", null)
         return@AsyncFunction
@@ -211,6 +256,20 @@ class RnBleConnectModule : Module() {
           super.onStartSuccess(settingsInEffect)
           advertising = true
           alertJS("Started Advertising")
+
+          // Cancel any existing native stop timer, then schedule a new one if requested
+          stopRunnable?.let { stopHandler.removeCallbacks(it) }
+          stopRunnable = null
+          if (durationMs > 0) {
+            val r = Runnable {
+              stopRunnable = null
+              stopAdvertisingInternal()
+              alertJS("Native timer: advertising stopped after ${durationMs.toLong()}ms")
+            }
+            stopRunnable = r
+            stopHandler.postDelayed(r, durationMs.toLong())
+          }
+
           promise.resolve("Success, Started Advertising")
         }
 
@@ -227,22 +286,11 @@ class RnBleConnectModule : Module() {
     }
 
     AsyncFunction("stop") { promise: Promise ->
+      // Cancel native timer if JS calls stop explicitly
+      stopRunnable?.let { stopHandler.removeCallbacks(it) }
+      stopRunnable = null
       try {
-        if (::advertiser.isInitialized) {
-          advertiser.stopAdvertising(object : AdvertiseCallback() {
-            override fun onStartFailure(errorCode: Int) {
-              Log.e(TAG, "Advertising stop failed: $errorCode")
-            }
-
-            override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
-              alertJS("Advertising stopped successfully")
-            }
-          })
-        }
-        if (::mGattServer.isInitialized) {
-          mGattServer.close()
-        }
-        advertising = false
+        stopAdvertisingInternal()
         promise.resolve("Success, Stopped Advertising")
       } catch (e: Exception) {
         Log.e(TAG, "Error stopping advertising: ${e.message}")

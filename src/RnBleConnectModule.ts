@@ -14,7 +14,12 @@ interface RnBleConnectInterface {
     CharacteristicUUID: string,
     data: number[]
   ): void;
-  start(): Promise<boolean>;
+  /**
+   * Start BLE advertising.
+   * @param durationMs If > 0, a native Android timer stops advertising automatically after this
+   *   many milliseconds (unaffected by JS engine throttling). Pass 0 to advertise indefinitely.
+   */
+  start(durationMs: number): Promise<boolean>;
   stop(): void;
   setName(name: string): void;
   getName(): string;
